@@ -31,12 +31,30 @@ public class CourseDaoImpl extends AbstractDao implements CourseDao {
 
     private static final String TABLE = "courses";
 
-    private static final String COLUMNS =
+    private static final String ALIAS = "c";
+
+    /** Unqualified column names, for the INSERT column list. */
+    private static final String COLUMN_NAMES =
             "course_id, course_code, course_name, credits, faculty_id, department, "
                     + "semester, description";
 
+    /**
+     * The same columns, qualified with the table alias.
+     *
+     * <p>Every read goes through this rather than the bare names because
+     * {@link #findByStudent(String)} joins {@code enrollments}, which also
+     * has a {@code course_id}. Unqualified, MySQL rejects the statement
+     * with "Column 'course_id' in field list is ambiguous" - so the
+     * alias is what makes the join legal, not cosmetic.
+     */
+    private static final String SELECT_COLUMNS =
+            "c.course_id, c.course_code, c.course_name, c.credits, c.faculty_id, "
+                    + "c.department, c.semester, c.description";
+
+    private static final String FROM = " FROM " + TABLE + " " + ALIAS;
+
     private static final String INSERT_SQL =
-            "INSERT INTO " + TABLE + " (" + COLUMNS + ") "
+            "INSERT INTO " + TABLE + " (" + COLUMN_NAMES + ") "
                     + "VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
 
     private static final String UPDATE_SQL =
@@ -48,7 +66,7 @@ public class CourseDaoImpl extends AbstractDao implements CourseDao {
             "DELETE FROM " + TABLE + " WHERE course_id = ?";
 
     private static final String SELECT_SQL =
-            "SELECT " + COLUMNS + " FROM " + TABLE;
+            "SELECT " + SELECT_COLUMNS + FROM;
 
     private static final String SUMMARY_SQL =
             "SELECT course_id, course_code, course_name FROM " + TABLE
@@ -126,25 +144,25 @@ public class CourseDaoImpl extends AbstractDao implements CourseDao {
 
     @Override
     public Optional<Course> findById(String courseId) throws AppException {
-        return findOne(SELECT_SQL + " WHERE course_id = ?",
+        return findOne(SELECT_SQL + " WHERE c.course_id = ?",
                 statement -> statement.setString(1, courseId));
     }
 
     @Override
     public Optional<Course> findByCode(String courseCode) throws AppException {
-        return findOne(SELECT_SQL + " WHERE course_code = ?",
+        return findOne(SELECT_SQL + " WHERE c.course_code = ?",
                 statement -> statement.setString(1, courseCode));
     }
 
     @Override
     public List<Course> findAll() throws AppException {
-        return findMany(SELECT_SQL + " ORDER BY course_code", null);
+        return findMany(SELECT_SQL + " ORDER BY c.course_code", null);
     }
 
     @Override
     public List<Course> findByStudent(String studentId) throws AppException {
-        String sql = SELECT_SQL + " JOIN enrollments e ON e.course_id = " + TABLE
-                + ".course_id WHERE e.student_id = ? ORDER BY course_code";
+        String sql = SELECT_SQL + " JOIN enrollments e ON e.course_id = c.course_id"
+                + " WHERE e.student_id = ? ORDER BY c.course_code";
         WhereClause where = new WhereClause();
         where.andCondition("e.student_id = ?", studentId);
         return findMany(sql, where);
@@ -153,8 +171,8 @@ public class CourseDaoImpl extends AbstractDao implements CourseDao {
     @Override
     public List<Course> findByFaculty(String facultyId) throws AppException {
         WhereClause where = new WhereClause();
-        where.andCondition("faculty_id = ?", facultyId);
-        return findMany(SELECT_SQL + where.toSql() + " ORDER BY course_code", where);
+        where.andCondition("c.faculty_id = ?", facultyId);
+        return findMany(SELECT_SQL + where.toSql() + " ORDER BY c.course_code", where);
     }
 
     @Override
@@ -181,14 +199,14 @@ public class CourseDaoImpl extends AbstractDao implements CourseDao {
     public List<Course> search(CourseSearchCriteria query) throws AppException {
         WhereClause where = new WhereClause();
         if (query != null) {
-            where.andEqualsIfPresent("course_id", query.getCourseId());
-            where.andLikeIfPresent("course_code", query.codeLikePattern());
-            where.andLikeIfPresent("course_name", query.nameLikePattern());
-            where.andLikeIfPresent("department", query.departmentLikePattern());
-            where.andEqualsIfPresent("faculty_id", query.getFacultyId());
-            where.andIfPresent("semester = ?", query.getSemester());
+            where.andEqualsIfPresent("c.course_id", query.getCourseId());
+            where.andLikeIfPresent("c.course_code", query.codeLikePattern());
+            where.andLikeIfPresent("c.course_name", query.nameLikePattern());
+            where.andLikeIfPresent("c.department", query.departmentLikePattern());
+            where.andEqualsIfPresent("c.faculty_id", query.getFacultyId());
+            where.andIfPresent("c.semester = ?", query.getSemester());
         }
-        return findMany(SELECT_SQL + where.toSql() + " ORDER BY course_code", where);
+        return findMany(SELECT_SQL + where.toSql() + " ORDER BY c.course_code", where);
     }
 
     // ------------------------------------------------------------------

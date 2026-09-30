@@ -30,7 +30,7 @@ public class UserDaoImpl extends AbstractDao implements UserDao {
     private static final String TABLE = "users";
 
     private static final String COLUMNS =
-            "user_id, username, full_name, role, is_active, password_hash, salt";
+            "user_id, username, full_name, role, active, password_hash, salt";
 
     private static final String SELECT_SQL =
             "SELECT " + COLUMNS + " FROM " + TABLE;
@@ -75,8 +75,7 @@ public class UserDaoImpl extends AbstractDao implements UserDao {
             statement.setString(2, user.getUsername());
             statement.setString(3, user.getFullName());
             statement.setString(4, user.getRole().name());
-            statement.setBoolean(5, user.isActive());
-            statement.setString(6, user.getPasswordHash());
+            statement.setBoolean(5, user.isActive());            statement.setString(6, user.getPasswordHash());
             statement.setString(7, user.getSalt());
             statement.executeUpdate();
         } catch (SQLException e) {
@@ -117,7 +116,7 @@ public class UserDaoImpl extends AbstractDao implements UserDao {
                 rs.getString("username"),
                 rs.getString("full_name"),
                 User.Role.fromLabel(rs.getString("role")),
-                rs.getBoolean("is_active"),
+                rs.getBoolean("active"),
                 rs.getString("password_hash"),
                 rs.getString("salt"));
     }
