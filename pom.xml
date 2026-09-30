@@ -46,13 +46,15 @@
     <build>
         <finalName>student-academic-management</finalName>
 
+        <!--
+            No resource filtering is enabled on purpose: Maven's ${...}
+            substitution would corrupt a database password containing a
+            dollar-brace sequence. Credentials are read verbatim.
+        -->
         <resources>
             <resource>
                 <directory>src/main/resources</directory>
-                <filtering>true</filtering>
-                <includes>
-                    <include>application.properties</include>
-                </includes>
+                <filtering>false</filtering>
             </resource>
         </resources>
 

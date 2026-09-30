@@ -1,0 +1,37 @@
+# =====================================================================
+#  Student Academic and Course Management System
+#  TEMPLATE configuration file.
+#
+#  Copy this file to application.properties in the SAME folder and fill in
+#  your own MySQL credentials:
+#
+#      Windows   :  copy application.properties.example application.properties
+#      Linux/mac :  cp application.properties.example application.properties
+#
+#  application.properties is listed in .gitignore, so your real password
+#  is never committed to version control.
+#
+#  Resolution order used by DbConfig, highest priority first:
+#      1. -D system property    mvn exec -Ddb.password=...
+#      2. environment variable ACADEMIC_DB_URL / _USERNAME / _PASSWORD
+#      3. this file
+# =====================================================================
+
+# JDBC URL.
+#   useSSL=false               - local development only; enable TLS in production
+#   allowPublicKeyRetrieval    - needed for the default caching_sha2_password
+#   serverTimezone=UTC         - avoids "The server time zone value is unrecognized"
+#   characterEncoding=UTF-8    - correct handling of names and addresses
+db.url=jdbc:mysql://localhost:3306/student_academic_management?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&characterEncoding=UTF-8
+
+# MySQL account used by the application.
+db.username=root
+
+# CHANGE THIS to your own MySQL root password (or a dedicated user).
+db.password=CHANGE_ME
+
+# JDBC driver class. Leave as is unless you use a different MySQL distribution.
+db.driver=com.mysql.cj.jdbc.Driver
+
+# Seconds to wait when validating a connection at start-up.
+db.connection.timeoutSeconds=10
