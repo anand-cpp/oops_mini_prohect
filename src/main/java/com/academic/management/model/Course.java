@@ -15,6 +15,8 @@ import java.util.Objects;
  */
 public class Course {
 
+    public static final String ID_PREFIX = "CRS";
+
     private static final int MAX_ID_LENGTH = 20;
     private static final int MAX_CODE_LENGTH = 20;
     private static final int MAX_NAME_LENGTH = 120;
@@ -164,8 +166,9 @@ public class Course {
         return courseCode + " - " + courseName;
     }
 
+    /** Suggests the next free internal id, for example {@code CRS007}. */
     public static String suggestId(int highestExistingNumber) {
-        return String.format("CRS%03d", highestExistingNumber + 1);
+        return String.format("%s%03d", ID_PREFIX, highestExistingNumber + 1);
     }
 
     @Override
