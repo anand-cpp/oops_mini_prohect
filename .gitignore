@@ -1,0 +1,35 @@
+# ---- Build output ----
+target/
+!.mvn/wrapper/maven-wrapper.jar
+
+# ---- Local configuration (contains real DB credentials) ----
+src/main/resources/application.properties
+*.local.properties
+.env
+
+# ---- Logs ----
+logs/
+*.log
+
+# ---- IDE ----
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.classpath
+.project
+.settings/
+nbproject/
+build/
+out/
+.class
+
+# ---- OS ----
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# ---- Archives ----
+*.zip
+*.tar.gz
