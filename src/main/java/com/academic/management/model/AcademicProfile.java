@@ -137,12 +137,21 @@ public class AcademicProfile {
     }
 
     /**
-     * True when every recorded figure clears its threshold: overall
-     * percentage at or above the pass mark <em>and</em> attendance at or
-     * above {@link Constants#ATTENDANCE_REQUIRED_PERCENT}.
+     * True when every recorded figure clears its threshold: no failed
+     * course, overall percentage at or above the pass mark <em>and</em>
+     * attendance at or above {@link Constants#ATTENDANCE_REQUIRED_PERCENT}.
+     *
+     * <p>The failed-course condition is not redundant with the overall
+     * average. A student can average well above the pass mark while
+     * having failed one course - for example 90% and 25% average to
+     * 57.5%, which clears 40% comfortably. Reporting such a student as
+     * "in good standing" would contradict
+     * {@link #getStandingSummary()}, which tells them a course needs
+     * re-examination, so the check includes it explicitly.
      */
     public boolean isInGoodStanding() {
         return hasAnyResult()
+                && getFailedCourseCount() == 0
                 && getOverallPercentage() >= Constants.PASS_PERCENTAGE
                 && getOverallAttendancePercentage() >= Constants.ATTENDANCE_REQUIRED_PERCENT;
     }
