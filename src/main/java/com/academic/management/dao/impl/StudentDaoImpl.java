@@ -267,21 +267,34 @@ public class StudentDaoImpl extends AbstractDao implements StudentDao {
     private Student mapRow(ResultSet rs) throws SQLException, AppException {
         String id = rs.getString("student_id");
         try {
-            return new Student(
-                    id,
-                    rs.getString("name"),
-                    readDate(rs, "date_of_birth"),
-                    Gender.fromLabel(rs.getString("gender")),
-                    rs.getString("email"),
-                    rs.getString("phone"),
-                    rs.getString("address"),
-                    rs.getString("department"),
-                    rs.getInt("semester"),
-                    readDate(rs, "admission_date"),
-                    rs.getString("guardian_contact"));
+            return mapStudentRow(rs);
         } catch (ValidationException e) {
             throw invalidRow(TABLE, id, e);
         }
+    }
+
+    /**
+     * Builds a {@link Student} from the current row without wrapping a
+     * domain-rule failure.
+     *
+     * <p>Package-private and static so {@link AcademicProfileDaoImpl} can
+     * reuse it for its single-student lookup. Keeping one mapper means a
+     * change to the {@code students} columns has to be reflected in one
+     * method, not two that could drift apart.
+     */
+    static Student mapStudentRow(ResultSet rs) throws SQLException, ValidationException {
+        return new Student(
+                rs.getString("student_id"),
+                rs.getString("name"),
+                readDate(rs, "date_of_birth"),
+                Gender.fromLabel(rs.getString("gender")),
+                rs.getString("email"),
+                rs.getString("phone"),
+                rs.getString("address"),
+                rs.getString("department"),
+                rs.getInt("semester"),
+                readDate(rs, "admission_date"),
+                rs.getString("guardian_contact"));
     }
 
     /**
