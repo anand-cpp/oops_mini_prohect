@@ -280,12 +280,56 @@ public class ResultService extends BaseService {
     // Workflow rules
     // ------------------------------------------------------------------
 
-    /** Courses whose results this student may be entered for. */
-    public List<Course> findGradableCourses(String studentId) throws AppException {
-        return courseDao.findByStudent(studentId);
+  /**
+   * Courses whose results this student may be entered for.
+   *
+   * <p>Being enrolled on a course is not enough: a result is one per student
+   * per course, so a course that already has one is not gradable again. The
+   * filter lives here rather than in the screen that offers the choice,
+   * because "may a second result be published for this course" is a rule
+   * about the data, not about the dialog - and a screen that forgot to ask
+   * would let the user fill in a form whose only possible outcome is a
+   * duplicate-key error from the database.
+   *
+   * @return the enrolled courses with no result yet, in the order the
+   *         enrolment query returned them
+   */
+  public List<Course> findGradableCourses(String studentId) throws AppException {
+    String id = requireStudentId(studentId);
+    java.util.Set<String> alreadyGraded = new java.util.HashSet<>();
+    for (Result existing : resultDao.findByStudent(id)) {
+      alreadyGraded.add(existing.getCourseId());
     }
+    List<Course> gradable = new java.util.ArrayList<>();
+    for (Course course : courseDao.findByStudent(id)) {
+      if (!alreadyGraded.contains(course.getCourseId())) {
+        gradable.add(course);
+      }
+    }
+    return gradable;
+  }
 
-    private void requireEnrolled(String studentId, String courseId) throws AppException {
+    /**
+   * The student these results are about.
+   *
+   * <p>Trims and checks the id, and confirms the student exists, so a typo
+   * in a screen's dropdown is reported as "no such student" rather than
+   * quietly returning an empty list - an empty list is indistinguishable from
+   * a student who has done nothing yet, and the first of those is a bug.
+   */
+  private String requireStudentId(String studentId) throws AppException {
+    if (studentId == null || studentId.isBlank()) {
+      throw new BusinessRuleException("Select a student.",
+          "Incomplete result request");
+    }
+    String id = studentId.trim();
+    if (!studentDao.existsById(id)) {
+      throw new RecordNotFoundException("Student", studentId);
+    }
+    return id;
+  }
+
+  private void requireEnrolled(String studentId, String courseId) throws AppException {
         if (studentId == null || studentId.isBlank() || courseId == null || courseId.isBlank()) {
             throw new BusinessRuleException("Select both a student and a course.",
                     "Incomplete result request");
