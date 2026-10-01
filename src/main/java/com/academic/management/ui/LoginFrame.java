@@ -17,7 +17,6 @@ import javax.swing.JPanel;
 import javax.swing.JPasswordField;
 import javax.swing.JTextField;
 import javax.swing.KeyStroke;
-import javax.swing.SwingConstants;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
@@ -52,14 +51,15 @@ public final class LoginFrame extends javax.swing.JFrame {
     private static final Logger LOGGER = AppLogger.getLogger(LoginFrame.class);
 
     private static final Dimension FORM_FIELD = new Dimension(300, 32);
-    private static final ColorRule TEXT_ON_NAVY_MUTED = new ColorRule(0xA8, 0xB6, 0xD0);
-    private static final ColorRule TEXT_ON_NAVY_FAINT = new ColorRule(0x76, 0x86, 0xA8);
 
     private final transient ServiceRegistry services;
     private final JTextField usernameField = Theme.styleInput(new JTextField());
     private final JPasswordField passwordField = Theme.styleInput(new JPasswordField());
     private final JLabel errorLabel = new JLabel(" ");
     private final JButton signInButton = Theme.button("Sign in", Theme.PRIMARY);
+
+    /** Holds the failure message; hidden until there is one to show. */
+    private final JPanel errorBanner = new JPanel(new BorderLayout());
 
     public LoginFrame(ServiceRegistry services) {
         super(Constants.APP_NAME);
@@ -90,7 +90,9 @@ public final class LoginFrame extends javax.swing.JFrame {
      *
      * <p>It carries the product name and the demo credentials, because the
      * commonest first-run problem with an application like this is not
-     * knowing which sign-in to use.
+     * knowing which sign-in to use. Every line on the navy is either the full
+     * {@link Theme#TEXT_ON_NAVY} or the muted shade that clears 4.5:1
+     * against it; there is no third, greyer option left here.
      */
     private JPanel buildBrandPanel() {
         JPanel brand = new JPanel(new GridBagLayout());
@@ -112,20 +114,22 @@ public final class LoginFrame extends javax.swing.JFrame {
         constraints.gridy++;
         constraints.insets = new Insets(Theme.PAD, 0, 0, 0);
         brand.add(Theme.captionOnDark("Students, faculty, courses, attendance and results",
-                TEXT_ON_NAVY_MUTED.color()), constraints);
+                Theme.TEXT_ON_NAVY_MUTED), constraints);
 
+        // The stack is plain supporting text. It was a tinted pill, which
+        // added a colour that meant nothing and a shape that implied a status.
         constraints.gridy++;
         constraints.weighty = 1;
         constraints.fill = GridBagConstraints.VERTICAL;
         constraints.insets = new Insets(Theme.PAD_LARGE, 0, Theme.PAD_LARGE, 0);
-        brand.add(Theme.badge("Swing · JDBC · MySQL", new java.awt.Color(0x6E, 0xD3, 0xA6)),
-                constraints);
+        brand.add(Theme.captionOnDark("Swing · JDBC · MySQL",
+                Theme.TEXT_ON_NAVY_MUTED), constraints);
 
         constraints.gridy++;
         constraints.weighty = 0;
         constraints.fill = GridBagConstraints.HORIZONTAL;
         constraints.insets = new Insets(0, 0, 0, 0);
-        brand.add(Theme.captionOnDark(Constants.APP_VERSION, TEXT_ON_NAVY_FAINT.color()),
+        brand.add(Theme.captionOnDark(Constants.APP_VERSION, Theme.TEXT_ON_NAVY_MUTED),
                 constraints);
         return brand;
     }
@@ -137,7 +141,7 @@ public final class LoginFrame extends javax.swing.JFrame {
         JPanel form = new JPanel(new GridBagLayout());
         form.setBackground(Theme.CARD);
         form.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(Theme.BORDER),
+                BorderFactory.createLineBorder(Theme.BORDER_STRONG),
                 Theme.padding(Theme.PAD_LARGE * 2)));
 
         GridBagConstraints constraints = new GridBagConstraints();
@@ -175,12 +179,9 @@ public final class LoginFrame extends javax.swing.JFrame {
         passwordField.setPreferredSize(FORM_FIELD);
         form.add(passwordField, constraints);
 
-        errorLabel.setFont(Theme.SMALL);
-        errorLabel.setForeground(Theme.DANGER);
-        errorLabel.setHorizontalAlignment(SwingConstants.LEFT);
         constraints.gridy++;
         constraints.insets = new Insets(0, 0, Theme.PAD, 0);
-        form.add(errorLabel, constraints);
+        form.add(buildErrorBanner(), constraints);
 
         JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, Theme.GAP, 0));
         buttons.setOpaque(false);
@@ -196,6 +197,33 @@ public final class LoginFrame extends javax.swing.JFrame {
         signInButton.addActionListener(event -> signIn());
         wrapper.add(form);
         return wrapper;
+    }
+
+    /**
+     * The inline failure area.
+     *
+     * <p>A rejected sign-in used to be one line of red text on white, which
+     * asks the user to notice the colour rather than to read the sentence.
+     * It is now a marked band - the same band the edit dialogs use for a
+     * refused save - so the failure is announced by its position and its
+     * border as well as by its colour.
+     */
+    private JPanel buildErrorBanner() {
+        errorLabel.setFont(Theme.SMALL);
+        errorLabel.setForeground(Theme.DANGER);
+
+        JPanel inner = new JPanel(new BorderLayout());
+        inner.setBackground(Theme.ERROR_BACKGROUND);
+        inner.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(0, 3, 0, 0, Theme.DANGER),
+                BorderFactory.createEmptyBorder(8, 10, 8, 10)));
+        inner.add(errorLabel, BorderLayout.CENTER);
+
+        errorBanner.removeAll();
+        errorBanner.setOpaque(false);
+        errorBanner.add(inner, BorderLayout.CENTER);
+        errorBanner.setVisible(false);
+        return errorBanner;
     }
 
     // ------------------------------------------------------------------
@@ -249,7 +277,7 @@ public final class LoginFrame extends javax.swing.JFrame {
         String password = new String(typed);
         java.util.Arrays.fill(typed, '\0');
 
-        errorLabel.setText(" ");
+        setError(null);
         setBusy(true);
 
         UiErrors.runAsync(this, "Could not sign in",
@@ -274,9 +302,22 @@ public final class LoginFrame extends javax.swing.JFrame {
     }
 
     private void showError(String message) {
-        errorLabel.setText(message);
+        setError(message);
         passwordField.setText("");
         passwordField.requestFocusInWindow();
+    }
+
+    /** Writes or clears the failure band, keeping its row from collapsing. */
+    private void setError(String message) {
+        if (message == null || message.isBlank()) {
+            errorLabel.setText(" ");
+            errorBanner.setVisible(false);
+        } else {
+            errorLabel.setText(message);
+            errorBanner.setVisible(true);
+        }
+        errorBanner.revalidate();
+        errorBanner.repaint();
     }
 
     private void setBusy(boolean busy) {
@@ -323,19 +364,12 @@ public final class LoginFrame extends javax.swing.JFrame {
      *
      * <p>Named {@code showLogin} rather than {@code show} because
      * {@code java.awt.Window} has a deprecated {@code show()} of its own;
-     * a method that silently shadowed a deprecated one from a supertype is
-     * a trap for the next person to change this call.
+     * a method that silently shadowed a deprecated one from a supertype is a
+     * trap for the next person to change this call.
      */
     public void showLogin() {
         setVisible(true);
         usernameField.requestFocusInWindow();
         warnIfNoAccount();
-    }
-
-    /** An RGB triple, so the two muted shades on the navy panel read as data. */
-    private record ColorRule(int red, int green, int blue) {
-        private java.awt.Color color() {
-            return new java.awt.Color(red, green, blue);
-        }
     }
 }

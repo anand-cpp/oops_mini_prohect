@@ -1,26 +1,33 @@
 package com.academic.management.ui;
 
+import com.academic.management.exception.ValidationException;
 import com.academic.management.model.User;
 import com.academic.management.service.ServiceRegistry;
-import com.academic.management.ui.common.Theme;
-import com.academic.management.ui.common.UiErrors;
+import com.academic.management.ui.common.FormDialog;
 import com.academic.management.util.AppLogger;
+import com.academic.management.util.Validator;
 
-import javax.swing.BorderFactory;
-import javax.swing.JComponent;
 import javax.swing.JFrame;
-import javax.swing.JPanel;
 import javax.swing.JPasswordField;
-import java.awt.Dimension;
-import java.awt.FlowLayout;
-import java.awt.GridBagConstraints;
-import java.awt.GridBagLayout;
-import java.awt.Insets;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
  * Changes the signed-in user's own password.
+ *
+ * <h2>Why this is a {@link FormDialog} and not a dialog of its own</h2>
+ * It used to be one. That meant a second set of field styles, a second
+ * validation approach, and a second save path - and it had already drifted:
+ * this dialog disabled its fields while saving and reported a refusal in a
+ * separate dialog, where every other edit form keeps the form on screen and
+ * puts the problem in a banner above the fields. Two ways to ask the same
+ * question is one more way for the wrong one to be answered.
+ *
+ * <p>So this class is now a declaration and nothing else: which three fields,
+ * which rules, and what to do when they are all valid. The live validation,
+ * the banner, the frozen fields, the busy save button and the rule that the
+ * values are read on the event thread before the worker starts all come from
+ * the shared dialog, so a password change behaves like every other save in
+ * the application.
  *
  * <h2>Why the current password is required</h2>
  * This dialog runs inside an already-authenticated session, so in principle
@@ -31,183 +38,48 @@ import java.util.logging.Logger;
  *
  * <p>The new password is entered twice because a typo in a password field
  * with no visibility is otherwise discovered only at the next sign-in. The
- * confirmation field is checked here rather than in the service, since
- * "these two do not match" is a form error and not a rule about passwords.
+ * confirmation is compared here rather than in the service, since "these two
+ * do not match" is a form error and not a rule about passwords. What a
+ * password must be - its length, its difference from the old one - is still
+ * the service's business, and the form does not second-guess it.
  */
-public final class ChangePasswordDialog extends javax.swing.JDialog {
+public final class ChangePasswordDialog {
 
-    private static final long serialVersionUID = 1L;
     private static final Logger LOGGER = AppLogger.getLogger(ChangePasswordDialog.class);
 
-    private final transient ServiceRegistry services;
-    private final transient User user;
-    private final JPasswordField currentField = Theme.styleInput(new JPasswordField());
-    private final JPasswordField newField = Theme.styleInput(new JPasswordField());
-    private final JPasswordField confirmField = Theme.styleInput(new JPasswordField());
-    private final javax.swing.JButton saveButton = Theme.button("Change password",
-            Theme.PRIMARY);
+    private static final String CURRENT = "Current password";
+    private static final String REPLACEMENT = "New password";
+    private static final String CONFIRMATION = "Confirm new password";
+
+    private final transient FormDialog dialog;
 
     public ChangePasswordDialog(JFrame owner, ServiceRegistry services, User user) {
-        super(owner, "Change password", ModalityType.APPLICATION_MODAL);
-        this.services = services;
-        this.user = user;
+        this.dialog = new FormDialog(owner, "Change password", "Change password", values -> {
+            services.authentication().changePassword(
+                    user.getUsername(),
+                    FormDialog.required(values, CURRENT),
+                    FormDialog.required(values, REPLACEMENT));
+            LOGGER.info("Password changed from the account menu for " + user.getUsername());
+        });
 
-        setDefaultCloseOperation(DISPOSE_ON_CLOSE);
-        setResizable(false);
-        setContentPane(buildContent());
-        wireEnterToSave();
-        getRootPane().setDefaultButton(saveButton);
-        pack();
-        setSize(Theme.DIALOG);
-        setMinimumSize(Theme.DIALOG);
-        setLocationRelativeTo(owner);
-    }
-
-    private JPanel buildContent() {
-        JPanel form = new JPanel(new GridBagLayout());
-        form.setBackground(Theme.CARD);
-        form.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(Theme.BORDER),
-                Theme.padding(Theme.PAD_LARGE)));
-
-        GridBagConstraints constraints = new GridBagConstraints();
-        constraints.gridx = 0;
-        constraints.gridy = 0;
-        constraints.gridwidth = 2;
-        constraints.anchor = GridBagConstraints.NORTHWEST;
-        constraints.fill = GridBagConstraints.HORIZONTAL;
-
-        javax.swing.JLabel heading = new javax.swing.JLabel("Change password");
-        heading.setFont(Theme.H2);
-        heading.setForeground(Theme.TEXT);
-        form.add(heading, constraints);
-
-        constraints.gridy++;
-        constraints.insets = new Insets(4, 0, Theme.PAD_LARGE, 0);
-        form.add(Theme.caption("Signed in as " + user.getUsername() + " ("
-                + user.getRole().getLabel() + ")"), constraints);
-
-        constraints.gridy++;
-        constraints.gridwidth = 1;
-        constraints.insets = new Insets(0, 0, 4, 0);
-        form.add(Theme.fieldLabel("Current password"), constraints);
-
-        constraints.gridy++;
-        constraints.insets = new Insets(0, 0, Theme.PAD, 0);
-        currentField.setPreferredSize(new Dimension(240, 30));
-        form.add(currentField, constraints);
-
-        constraints.gridy++;
-        constraints.insets = new Insets(0, 0, 4, 0);
-        form.add(Theme.fieldLabel("New password"), constraints);
-
-        constraints.gridy++;
-        constraints.insets = new Insets(0, 0, 4, 0);
-        form.add(Theme.ruleLabel("At least 6 characters, and different from the current one."),
-                constraints);
-
-        constraints.gridy++;
-        constraints.insets = new Insets(0, 0, Theme.PAD, 0);
-        newField.setPreferredSize(new Dimension(240, 30));
-        form.add(newField, constraints);
-
-        constraints.gridy++;
-        constraints.insets = new Insets(0, 0, 4, 0);
-        form.add(Theme.fieldLabel("Confirm new password"), constraints);
-
-        constraints.gridy++;
-        constraints.insets = new Insets(0, 0, Theme.PAD, 0);
-        confirmField.setPreferredSize(new Dimension(240, 30));
-        form.add(confirmField, constraints);
-
-        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, Theme.GAP, 0));
-        buttons.setOpaque(false);
-        javax.swing.JButton cancel = Theme.secondaryButton("Cancel");
-        cancel.addActionListener(event -> dispose());
-        buttons.add(cancel);
-        buttons.add(saveButton);
-        constraints.gridy++;
-        constraints.gridwidth = 2;
-        constraints.insets = new Insets(0, 0, 0, 0);
-        form.add(buttons, constraints);
-
-        saveButton.addActionListener(event -> save());
-        return form;
-    }
-
-    private void wireEnterToSave() {
-        getRootPane().getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW)
-                .put(javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_ENTER, 0),
-                        "save");        getRootPane().getActionMap().put("save", new javax.swing.AbstractAction() {
-            private static final long serialVersionUID = 1L;
-
-            @Override
-            public void actionPerformed(java.awt.event.ActionEvent event) {
-                save();
+        dialog.addPasswordField(CURRENT, 24, FormDialog.requiredRule());
+        JPasswordField replacement = dialog.addPasswordField(
+                REPLACEMENT, 24, FormDialog.requiredRule());
+        dialog.addNote("At least 6 characters, and different from the current one.");
+        dialog.addPasswordField(CONFIRMATION, 24, (label, typed) -> {
+            Validator.requireText(label, typed);
+            // Safe to read the other field here: a rule is only ever run
+            // from revalidate(), which is called from the document listener
+            // and from the save callbacks - all of them on the event thread.
+            String other = new String(replacement.getPassword()).trim();
+            if (!typed.equals(other)) {
+                throw new ValidationException("The two new passwords do not match.");
             }
         });
     }
 
-    /**
-     * Validates the two new fields against each other, then hands the change
-     * to the service.
-     *
-     * <p>The service call is on a worker thread; until it returns the
-     * fields are disabled, because a second attempt would be a second
-     * hash of the same new value and would be reported as "the new password
-     * must be different" for no good reason.
-     */
-    private void save() {
-        char[] current = currentField.getPassword();
-        char[] replacement = newField.getPassword();
-        char[] confirmation = confirmField.getPassword();
-
-        if (current.length == 0 || replacement.length == 0) {
-            UiErrors.show(this, "Change password", "Enter your current password and a new one.");
-            return;
-        }
-        if (!java.util.Arrays.equals(replacement, confirmation)) {
-            UiErrors.showWarning(this, "Change password",
-                    "The two new passwords do not match.");
-            confirmField.setText("");
-            confirmField.requestFocusInWindow();
-            return;
-        }
-
-        String currentText = new String(current);
-        String newText = new String(replacement);
-        java.util.Arrays.fill(current, '\0');
-        java.util.Arrays.fill(replacement, '\0');
-        java.util.Arrays.fill(confirmation, '\0');
-
-        setBusy(true);
-        UiErrors.runAsync(this, "Could not change the password", () -> {
-            services.authentication().changePassword(user.getUsername(), currentText, newText);
-            return Boolean.TRUE;
-        }, done -> {
-            setBusy(false);
-            LOGGER.info("Password changed from the account menu for " + user.getUsername());
-            UiErrors.info(this, "Password changed",
-                    "Your password has been changed. Use it the next time you sign in.");
-            dispose();
-        }, () -> {
-            setBusy(false);
-            clearFields();
-            currentField.requestFocusInWindow();
-        });
-    }
-
-    private void clearFields() {
-        currentField.setText("");
-        newField.setText("");
-        confirmField.setText("");
-    }
-
-    private void setBusy(boolean busy) {
-        saveButton.setEnabled(!busy);
-        saveButton.setText(busy ? "Changing…" : "Change password");
-        currentField.setEnabled(!busy);
-        newField.setEnabled(!busy);
-        confirmField.setEnabled(!busy);
+    /** Shows the dialog, blocking until it closes. */
+    public void showDialog() {
+        dialog.showDialog();
     }
 }

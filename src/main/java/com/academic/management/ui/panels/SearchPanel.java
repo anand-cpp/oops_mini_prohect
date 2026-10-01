@@ -13,7 +13,6 @@ import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JPanel;
 import javax.swing.JTextField;
-import javax.swing.Timer;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import java.awt.BorderLayout;
@@ -41,7 +40,8 @@ import java.util.List;
  * Each keystroke would be a database round trip - a three-character term
  * would cost three queries and throw three away. A short pause after the
  * last keystroke collapses a burst of typing into one query, without making
- * the user press anything.
+ * the user press anything. The pause lives in {@link PagePanel}, so every
+ * filter in the application settles at the same speed.
  *
  * <h2>Why the text is captured on the event thread</h2>
  * {@link #load()} runs on a worker thread, and a Swing component must not
@@ -56,22 +56,35 @@ public final class SearchPanel extends PagePanel {
 
     private static final String[] HEADERS = {"Type", "ID", "Code / Roll", "Name", "Detail", "Extra"};
 
-    private static final int[] WIDTHS = {90, 100, 120, 240, 240, 200};
+    /**
+     * The three columns whose content is unbounded and therefore worth the
+     * spare width. A hit's name, detail and extra columns are free text from
+     * three different tables, so a fixed width would either truncate a long
+     * email or strand empty space beside a two-word name.
+     */
+    private static final int NAME_COLUMN = 3;
+    private static final int DETAIL_COLUMN = 4;
+    private static final int EXTRA_COLUMN = 5;
 
-    /** How long typing has to pause before a search runs, in milliseconds. */
-    private static final int TYPING_PAUSE_MS = 300;
+    private static final int[] WIDTHS = {90, 100, 120, 240, 240, 200};
 
     private static final String ALL_SCOPES = "Everything";
 
     private final transient ServiceRegistry services;
     private final transient DisplayTableModel model = new DisplayTableModel(HEADERS, WIDTHS);
-    private final transient DataTable table = DataTable.over(model);
+    private final transient DataTable table = DataTable.over(model)
+            .fit(NAME_COLUMN, DETAIL_COLUMN, EXTRA_COLUMN);
 
     private final JTextField queryField = Theme.styleInput(new JTextField());
-    private final JComboBox<String> scopePicker = new JComboBox<>();
+    private final JComboBox<String> scopePicker = Theme.styleSelect(new JComboBox<>());
 
-    /** Restarted on every keystroke, so only the last one survives. */
-    private final Timer debounce = new Timer(TYPING_PAUSE_MS, event -> runSearch());
+    /**
+     * The centre of the page, holding either the table or the empty state.
+     *
+     * <p>Held as a field rather than built inside {@code buildBody} because
+     * {@link #showRows} has to swap its child on every render.
+     */
+    private final JPanel tableArea = new JPanel(new BorderLayout());
 
     /** The request the next load will run, captured on the event thread. */
     private transient String term = "";
@@ -80,7 +93,6 @@ public final class SearchPanel extends PagePanel {
     public SearchPanel(ServiceRegistry services) {
         super("Search", "Find a student, a member of faculty or a course from one box.");
         this.services = services;
-        debounce.setRepeats(false);
 
         JButton search = Theme.button("Search", Theme.PRIMARY);
         search.addActionListener(event -> runSearch());
@@ -108,21 +120,20 @@ public final class SearchPanel extends PagePanel {
         queryField.getDocument().addDocumentListener(new DocumentListener() {
             @Override
             public void insertUpdate(DocumentEvent event) {
-                debounce.restart();
+                reloadWhenTypingSettles();
             }
 
             @Override
             public void removeUpdate(DocumentEvent event) {
-                debounce.restart();
+                reloadWhenTypingSettles();
             }
 
             @Override
             public void changedUpdate(DocumentEvent event) {
-                debounce.restart();
+                reloadWhenTypingSettles();
             }
         });
 
-        scopePicker.setFont(Theme.BODY);
         scopePicker.setPreferredSize(new Dimension(140, 30));
         scopePicker.addItem(ALL_SCOPES);
         for (SearchService.Scope scope : SearchService.Scope.values()) {
@@ -130,15 +141,18 @@ public final class SearchPanel extends PagePanel {
         }
         scopePicker.addActionListener(event -> runSearch());
 
-        JPanel filters = row(Theme.caption("Search for:"), queryField,
-                Theme.caption("In:"), scopePicker,
+        JPanel filters = row(filterLabel("Search for:", queryField),
+                filterLabel("In:", scopePicker),
                 Theme.caption("Matches names, ids, emails and course codes."));
         filters.setBorder(Theme.padding(0, 0, Theme.GAP, 0));
+
+        tableArea.setOpaque(false);
+        tableArea.add(table.scroll(), BorderLayout.CENTER);
 
         JPanel body = new JPanel(new BorderLayout(0, Theme.GAP));
         body.setOpaque(false);
         body.add(filters, BorderLayout.NORTH);
-        body.add(table.scroll(), BorderLayout.CENTER);
+        body.add(tableArea, BorderLayout.CENTER);
         return body;
     }
 
@@ -153,7 +167,6 @@ public final class SearchPanel extends PagePanel {
      * {@link #load()} free of them.
      */
     private void runSearch() {
-        debounce.stop();
         term = queryField.getText().trim();
         scopes = selectedScopes();
         reload();
@@ -192,6 +205,12 @@ public final class SearchPanel extends PagePanel {
     protected void render(List<String[]> rows) {
         fillTable(model, rows);
         setStatus(describe(rows.size()));
+        showRows(tableArea, table.scroll(), rows.size(),
+                term.isEmpty()
+                        ? "Nothing to search yet. Type a name, an id, an email or a course "
+                          + "code above."
+                        : "Nothing matches '" + term + "' in this scope. Try a shorter "
+                          + "term, or widen the scope.");
     }
 
     private String describe(int matches) {

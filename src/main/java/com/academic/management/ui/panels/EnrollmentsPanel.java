@@ -55,18 +55,29 @@ public final class EnrollmentsPanel extends PagePanel {
     private static final int[] WIDTHS = {100, 180, 100, 250, 90, 120, 110};
 
     private static final int STUDENT_ID_COLUMN = 0;
+    private static final int STUDENT_COLUMN = 1;
     private static final int COURSE_ID_COLUMN = 2;
+    private static final int COURSE_COLUMN = 3;
     private static final int SEMESTER_COLUMN = 4;
     private static final int STATUS_COLUMN = 6;
 
     private final transient ServiceRegistry services;
     private final transient DisplayTableModel model = new DisplayTableModel(HEADERS, WIDTHS);
     private final transient DataTable table = DataTable.over(model)
+            .fit(STUDENT_COLUMN, COURSE_COLUMN)
             .numeric(SEMESTER_COLUMN)
             .verdict(STATUS_COLUMN);
 
     private final JTextField searchField = Theme.styleInput(new JTextField());
-    private final JComboBox<String> statusFilter = new JComboBox<>();
+    private final JComboBox<String> statusFilter = Theme.styleSelect(new JComboBox<>());
+
+    /**
+     * The centre of the page, holding either the table or the empty state.
+     *
+     * <p>Held as a field rather than built inside {@code buildBody} because
+     * {@link #showRows} has to swap its child on every render.
+     */
+    private final JPanel tableArea = new JPanel(new BorderLayout());
 
     private String searchTerm = "";
     private String status = "";
@@ -123,7 +134,6 @@ public final class EnrollmentsPanel extends PagePanel {
             }
         });
 
-        statusFilter.setFont(Theme.BODY);
         statusFilter.setPreferredSize(new Dimension(160, 30));
         for (Enrollment.Status value : Enrollment.Status.values()) {
             statusFilter.addItem(value.getLabel());
@@ -134,20 +144,23 @@ public final class EnrollmentsPanel extends PagePanel {
             reload();
         });
 
-        JPanel filters = row(Theme.caption("Search:"), searchField,
-                Theme.caption("Status:"), statusFilter, glue());
+        JPanel filters = row(filterLabel("Search:", searchField),
+                filterLabel("Status:", statusFilter), glue());
         filters.setBorder(Theme.padding(0, 0, Theme.GAP, 0));
+
+        tableArea.setOpaque(false);
+        tableArea.add(table.scroll(), BorderLayout.CENTER);
 
         JPanel body = new JPanel(new BorderLayout(0, Theme.GAP));
         body.setOpaque(false);
         body.add(filters, BorderLayout.NORTH);
-        body.add(table.scroll(), BorderLayout.CENTER);
+        body.add(tableArea, BorderLayout.CENTER);
         return body;
     }
 
     private void searchChanged() {
         searchTerm = searchField.getText().trim();
-        reload();
+        reloadWhenTypingSettles();
     }
 
     // ------------------------------------------------------------------
@@ -230,6 +243,10 @@ public final class EnrollmentsPanel extends PagePanel {
     protected void render(List<String[]> rows) {
         setStatus(UiSupport.count(rows.size(), "enrolment", "enrolments")
                 + (searchTerm.isEmpty() ? "" : " matching '" + searchTerm + "'"));
+        showRows(tableArea, table.scroll(), rows.size(),
+                rows.isEmpty() && searchTerm.isEmpty() && status.isEmpty()
+                        ? "No enrolments yet. Use Enrol a student to add the first one."
+                        : "No enrolment matches the current filters.");
     }
 
     // ------------------------------------------------------------------

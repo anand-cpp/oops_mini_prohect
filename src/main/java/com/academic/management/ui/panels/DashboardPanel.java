@@ -9,14 +9,16 @@ import com.academic.management.ui.common.Theme;
 import com.academic.management.ui.common.UiSupport;
 import com.academic.management.util.Constants;
 
+import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import java.awt.BorderLayout;
-import java.awt.Color;
-import java.awt.Dimension;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
 import java.awt.GridLayout;
+import java.awt.Insets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -31,6 +33,15 @@ import java.util.List;
  * averages summarise academic performance. And "by what rules?" - the
  * grading scale and the attendance requirement, which explain most of the
  * verdicts shown on other pages and are otherwise buried in code.
+ *
+ * <h2>Why the six counts are one band and not six cards</h2>
+ * They were six identically sized white cards with six different accent
+ * colours, which made the page read as six unrelated widgets competing with
+ * the cards below them - and the colours themselves said nothing: a purple
+ * for faculty and a red for results implied a status that the numbers do not
+ * carry. They are now a single navy band across the top, because they are one
+ * answer ("how much is there") rather than six, with the same accent on every
+ * one and the figure itself the only thing large on the screen.
  *
  * <h2>Why the figures come from one call</h2>
  * {@link ServiceRegistry#loadDashboard()} fetches all eight in one go. Eight
@@ -48,7 +59,7 @@ public final class DashboardPanel extends PagePanel {
     private final transient ServiceRegistry services;
     private final transient MainFrame frame;
 
-    private final JPanel figureRow = new JPanel(new GridLayout(1, FIGURE_COUNT, Theme.GAP, 0));
+    private final JPanel figureRow = new JPanel(new GridLayout(1, FIGURE_COUNT, 0, 0));
     private final JLabel resultAverage = Theme.caption(" ");
     private final JLabel attendanceAverage = Theme.caption(" ");
 
@@ -94,7 +105,8 @@ public final class DashboardPanel extends PagePanel {
     // ------------------------------------------------------------------
 
     private JComponent buildBody() {
-        figureRow.setOpaque(false);
+        figureRow.setBackground(Theme.NAVY);
+        figureRow.setBorder(Theme.padding(Theme.PAD_LARGE, 0, Theme.PAD_LARGE, 0));
         // Placeholders keep the grid's column count correct before the first
         // load finishes; load() replaces them with real figures.
         for (int i = 0; i < FIGURE_COUNT; i++) {
@@ -104,8 +116,26 @@ public final class DashboardPanel extends PagePanel {
         JPanel body = new JPanel(new BorderLayout(0, Theme.PAD));
         body.setOpaque(false);
         body.add(figureRow, BorderLayout.NORTH);
-        body.add(buildAverages(), BorderLayout.CENTER);
-        body.add(buildRules(), BorderLayout.SOUTH);
+
+        // The cards below the band are sized to their content and centred in
+        // what is left, rather than stretched down the viewport - a two-line
+        // card made three hundred pixels tall by a grid reads as a mistake,
+        // and it pushed the grading scale off the bottom of the screen.
+        JPanel below = new JPanel(new GridBagLayout());
+        below.setOpaque(false);
+        GridBagConstraints constraints = new GridBagConstraints();
+        constraints.gridx = 0;
+        constraints.gridy = 0;
+        constraints.weightx = 1;
+        constraints.fill = GridBagConstraints.HORIZONTAL;
+        constraints.insets = new Insets(0, 0, Theme.PAD, 0);
+        below.add(buildAverages(), constraints);
+
+        constraints.gridy++;
+        constraints.insets = new Insets(0, 0, 0, 0);
+        below.add(buildRules(), constraints);
+
+        body.add(below, BorderLayout.CENTER);
         return body;
     }
 
@@ -115,6 +145,10 @@ public final class DashboardPanel extends PagePanel {
      * <p>They sit next to each other because they are the two numbers that
      * decide whether a student is in good standing, and seeing them as a pair
      * makes "marks are fine, attendance is not" immediately legible.
+     *
+     * <p>The figure is one step down from the counts in the band above,
+     * because it is a summary of a summary: the counts are what is on screen,
+     * these are what it adds up to.
      */
     private JComponent buildAverages() {
         JPanel row = new JPanel(new GridLayout(1, 2, Theme.GAP, 0));
@@ -131,7 +165,7 @@ public final class DashboardPanel extends PagePanel {
         JPanel card = Theme.card();
         card.setLayout(new BorderLayout(0, Theme.GAP));
         card.add(Theme.sectionLabel(heading), BorderLayout.NORTH);
-        value.setFont(Theme.H1);
+        value.setFont(Theme.H2);
         value.setForeground(Theme.TEXT);
         card.add(value, BorderLayout.CENTER);
         card.add(Theme.caption(explanation), BorderLayout.SOUTH);
@@ -216,12 +250,12 @@ public final class DashboardPanel extends PagePanel {
             return;
         }
         figureRow.removeAll();
-        figureRow.add(figureCard("Students", loaded.students(), Theme.PRIMARY));
-        figureRow.add(figureCard("Faculty", loaded.faculty(), new Color(0x7A, 0x4F, 0xC0)));
-        figureRow.add(figureCard("Courses", loaded.courses(), new Color(0x0E, 0x7C, 0x86)));
-        figureRow.add(figureCard("Enrolments", loaded.enrolments(), new Color(0xC0, 0x7A, 0x00)));
-        figureRow.add(figureCard("Attendance", loaded.attendanceRecords(), Theme.SUCCESS));
-        figureRow.add(figureCard("Results", loaded.resultRecords(), Theme.DANGER));
+        figureRow.add(figureCell("Students", loaded.students(), 0));
+        figureRow.add(figureCell("Faculty", loaded.faculty(), 1));
+        figureRow.add(figureCell("Courses", loaded.courses(), 1));
+        figureRow.add(figureCell("Enrolments", loaded.enrolments(), 1));
+        figureRow.add(figureCell("Attendance", loaded.attendanceRecords(), 1));
+        figureRow.add(figureCell("Results", loaded.resultRecords(), 1));
         figureRow.revalidate();
         figureRow.repaint();
 
@@ -238,27 +272,36 @@ public final class DashboardPanel extends PagePanel {
     }
 
     /**
-     * One headline figure.
+     * One headline figure, on the navy band.
      *
-     * <p>All six are the same shape - colour bar, caption, number - so they
-     * read as six comparable counts rather than six unrelated widgets.
+     * <p>The accent bar is the same on all six. It marks the band as the
+     * application's own summary rather than as six separate categories, and
+     * it is the one blue in the palette that clears 3:1 against navy.
+     *
+     * @param position the cell's index, used only to draw the divider that
+     *                 separates it from the cell before
      */
-    private JComponent figureCard(String caption, long value, Color accent) {
-        JPanel card = Theme.card();
-        card.setLayout(new BorderLayout(Theme.GAP, 0));
-        card.setPreferredSize(new Dimension(160, 96));
+    private JComponent figureCell(String caption, long value, int position) {
+        JPanel cell = new JPanel(new BorderLayout(Theme.GAP, 0));
+        cell.setBackground(Theme.NAVY);
+        cell.setOpaque(true);
+        cell.setBorder(position == 0
+                ? Theme.padding(0, Theme.PAD_LARGE, 0, Theme.GAP)
+                : BorderFactory.createCompoundBorder(
+                        BorderFactory.createMatteBorder(0, 1, 0, 0, Theme.NAVY_HOVER),
+                        Theme.padding(0, Theme.PAD_LARGE, 0, Theme.GAP)));
 
         JPanel text = new JPanel(new BorderLayout(0, 2));
         text.setOpaque(false);
-        JLabel label = Theme.caption(caption);
+        JLabel label = Theme.captionOnDark(caption, Theme.TEXT_ON_NAVY_MUTED);
         JLabel figure = new JLabel(String.valueOf(value));
         figure.setFont(Theme.H1);
-        figure.setForeground(Theme.TEXT);
+        figure.setForeground(Theme.TEXT_ON_NAVY);
         text.add(label, BorderLayout.NORTH);
         text.add(figure, BorderLayout.CENTER);
 
-        card.add(Theme.accentBar(accent), BorderLayout.WEST);
-        card.add(text, BorderLayout.CENTER);
-        return card;
+        cell.add(Theme.accentBar(Theme.ACCENT_ON_NAVY), BorderLayout.WEST);
+        cell.add(text, BorderLayout.CENTER);
+        return cell;
     }
 }

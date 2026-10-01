@@ -59,19 +59,32 @@ public final class AttendancePanel extends PagePanel {
     private static final int[] WIDTHS = {100, 180, 100, 240, 70, 80, 70, 100, 110, 120};
 
     private static final int STUDENT_ID_COLUMN = 0;
+    private static final int STUDENT_COLUMN = 1;
     private static final int COURSE_ID_COLUMN = 2;
+    private static final int COURSE_COLUMN = 3;
     private static final int HELD_COLUMN = 4;
     private static final int ATTENDED_COLUMN = 5;
+    private static final int ABSENT_COLUMN = 6;
+    private static final int PERCENTAGE_COLUMN = 7;
     private static final int STATUS_COLUMN = 8;
 
     private final transient ServiceRegistry services;
     private final transient DisplayTableModel model = new DisplayTableModel(HEADERS, WIDTHS);
     private final transient DataTable table = DataTable.over(model)
-            .numeric(HELD_COLUMN, ATTENDED_COLUMN)
+            .fit(STUDENT_COLUMN, COURSE_COLUMN)
+            .numeric(HELD_COLUMN, ATTENDED_COLUMN, ABSENT_COLUMN, PERCENTAGE_COLUMN)
             .verdict(STATUS_COLUMN);
 
     private final JTextField searchField = Theme.styleInput(new JTextField());
-    private final JComboBox<String> statusFilter = new JComboBox<>();
+    private final JComboBox<String> statusFilter = Theme.styleSelect(new JComboBox<>());
+
+    /**
+     * The centre of the page, holding either the table or the empty state.
+     *
+     * <p>Held as a field rather than built inside {@code buildBody} because
+     * {@link #showRows} has to swap its child on every render.
+     */
+    private final JPanel tableArea = new JPanel(new BorderLayout());
 
     private String searchTerm = "";
     private String status = "";
@@ -131,7 +144,6 @@ public final class AttendancePanel extends PagePanel {
             }
         });
 
-        statusFilter.setFont(Theme.BODY);
         statusFilter.setPreferredSize(new Dimension(170, 30));
         statusFilter.addItem("All attendance");
         statusFilter.addItem("Regular");
@@ -142,20 +154,23 @@ public final class AttendancePanel extends PagePanel {
             reload();
         });
 
-        JPanel filters = row(Theme.caption("Search:"), searchField,
-                Theme.caption("Status:"), statusFilter, glue());
+        JPanel filters = row(filterLabel("Search:", searchField),
+                filterLabel("Status:", statusFilter), glue());
         filters.setBorder(Theme.padding(0, 0, Theme.GAP, 0));
+
+        tableArea.setOpaque(false);
+        tableArea.add(table.scroll(), BorderLayout.CENTER);
 
         JPanel body = new JPanel(new BorderLayout(0, Theme.GAP));
         body.setOpaque(false);
         body.add(filters, BorderLayout.NORTH);
-        body.add(table.scroll(), BorderLayout.CENTER);
+        body.add(tableArea, BorderLayout.CENTER);
         return body;
     }
 
     private void searchChanged() {
         searchTerm = searchField.getText().trim();
-        reload();
+        reloadWhenTypingSettles();
     }
 
     // ------------------------------------------------------------------
@@ -238,6 +253,12 @@ public final class AttendancePanel extends PagePanel {
     protected void render(List<String[]> rows) {
         setStatus(UiSupport.count(rows.size(), "attendance record", "attendance records")
                 + (searchTerm.isEmpty() ? "" : " matching '" + searchTerm + "'"));
+        showRows(tableArea, table.scroll(), rows.size(),
+                rows.isEmpty() && searchTerm.isEmpty()
+                        && ("All attendance".equals(status) || status.isEmpty())
+                        ? "No attendance recorded yet. Use Record attendance to add the "
+                          + "first row."
+                        : "No attendance record matches the current filters.");
     }
 
     // ------------------------------------------------------------------
@@ -462,7 +483,7 @@ public final class AttendancePanel extends PagePanel {
                     "Select a record in the table, then choose Delete.");
             return;
         }
-        if (!UiErrors.confirm(this, "Delete attendance",
+        if (!UiErrors.confirmDetailed(this, "Delete attendance",
                 "Delete the attendance record for " + studentId + " in " + courseId
                         + "?\n\nThe result for the same course, if any, is kept.")) {
             return;

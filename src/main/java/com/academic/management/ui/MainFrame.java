@@ -17,7 +17,6 @@ import com.academic.management.ui.panels.StudentsPanel;
 import com.academic.management.util.AppLogger;
 import com.academic.management.util.Constants;
 
-import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
@@ -26,7 +25,6 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
-import java.awt.Color;
 import java.awt.Component;
 import java.awt.Cursor;
 import java.awt.Dimension;
@@ -44,7 +42,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * The signed-in window: a navigation rail, a header, and one card per page.
+ * The signed-in window: a navigation rail and one card per page.
  *
  * <h2>Why a CardLayout and not one window per page</h2>
  * Swapping visible components inside one frame is what keeps the unsaved
@@ -57,6 +55,14 @@ import java.util.logging.Logger;
  * {@code JList}, because the selected state has to be a filled pill on the
  * navy background, and reaching for that with a list renderer means fighting
  * the cell border and focus painting on every theme.
+ *
+ * <h2>Why there is no title bar above the pages</h2>
+ * Each page carries its own title as the first thing in its content, at the
+ * size the type scale reserves for a page title. A second copy of that title
+ * in a chrome strip above it was not a summary of anything - it said the same
+ * thing twice, in two weights, on one screen - and the session details it
+ * carried alongside are already in the rail's account block. So the strip is
+ * gone and one heading per screen remains.
  */
 public final class MainFrame extends JFrame {
 
@@ -78,7 +84,6 @@ public final class MainFrame extends JFrame {
     public static final String SEARCH = "search";
 
     private static final int RAIL_WIDTH = 232;
-    private static final int HEADER_HEIGHT = 64;
 
     private final transient ServiceRegistry services;
     private final transient User user;
@@ -133,7 +138,6 @@ public final class MainFrame extends JFrame {
     private JPanel buildCentre() {
         JPanel centre = new JPanel(new BorderLayout());
         centre.setBackground(Theme.PAGE);
-        centre.add(buildHeader(), BorderLayout.NORTH);
         content.setBackground(Theme.PAGE);
         pages.forEach((key, page) -> content.add(page, key));
         centre.add(content, BorderLayout.CENTER);
@@ -160,7 +164,7 @@ public final class MainFrame extends JFrame {
 
         JLabel subtitle = new JLabel("  Management Suite");
         subtitle.setFont(Theme.SMALL);
-        subtitle.setForeground(new Color(0x76, 0x86, 0xA8));
+        subtitle.setForeground(Theme.TEXT_ON_NAVY_MUTED);
         subtitle.setBorder(Theme.padding(0, 0, Theme.PAD, 0));
         subtitle.setAlignmentX(Component.LEFT_ALIGNMENT);
         rail.add(subtitle);
@@ -177,13 +181,24 @@ public final class MainFrame extends JFrame {
 
         // Pushes the account block to the bottom of the rail.
         rail.add(Box.createVerticalGlue());
+        rail.add(buildAccountBlock());
+        return rail;
+    }
 
+    /**
+     * Who is signed in, and the two things they can do about it.
+     *
+     * <p>The version sits here rather than in a strip above the pages, which
+     * is where it was: an application build number belongs with the account,
+     * not in the space a page title used to occupy.
+     */
+    private JPanel buildAccountBlock() {
         JPanel account = new JPanel();
-        account.setBackground(new Color(0x1A, 0x24, 0x3A));
+        account.setBackground(Theme.NAVY_INSET);
         account.setLayout(new BoxLayout(account, BoxLayout.Y_AXIS));
         account.setBorder(Theme.padding(Theme.PAD, Theme.PAD_LARGE, Theme.PAD, Theme.PAD_LARGE));
         account.setAlignmentX(Component.LEFT_ALIGNMENT);
-        account.setMaximumSize(new Dimension(Integer.MAX_VALUE, 120));
+        account.setMaximumSize(new Dimension(Integer.MAX_VALUE, 160));
 
         JLabel name = new JLabel(user.getWelcomeName());
         name.setFont(Theme.BODY_BOLD);
@@ -193,7 +208,7 @@ public final class MainFrame extends JFrame {
 
         JLabel role = new JLabel(user.getRole().getLabel());
         role.setFont(Theme.SMALL);
-        role.setForeground(new Color(0x76, 0x86, 0xA8));
+        role.setForeground(Theme.TEXT_ON_NAVY_MUTED);
         role.setBorder(Theme.padding(0, 0, Theme.GAP, 0));
         role.setAlignmentX(Component.LEFT_ALIGNMENT);
         account.add(role);
@@ -206,8 +221,11 @@ public final class MainFrame extends JFrame {
         accountActions.add(railAction("Sign out", this::signOut));
         account.add(accountActions);
 
-        rail.add(account);
-        return rail;
+        JLabel version = Theme.captionOnDark(Theme.version(), Theme.TEXT_ON_NAVY_MUTED);
+        version.setAlignmentX(Component.LEFT_ALIGNMENT);
+        version.setBorder(Theme.padding(Theme.GAP, 0, 0, 0));
+        account.add(version);
+        return account;
     }
 
     private void addNavButton(JPanel rail, String key, String label) {
@@ -234,61 +252,25 @@ public final class MainFrame extends JFrame {
         rail.add(button);
     }
 
+    /**
+     * A text action on the navy rail.
+     *
+     * <p>Unfilled so the rail stays a list rather than becoming a second row
+     * of buttons, but still carrying the application's focus ring - a link
+     * that cannot be reached by keyboard is not a link.
+     */
     private JButton railAction(String text, Runnable action) {
         JButton button = new JButton(text);
         button.setFont(Theme.SMALL);
-        button.setForeground(new Color(0xA8, 0xB6, 0xD0));
+        button.setForeground(Theme.TEXT_ON_NAVY_MUTED);
         button.setContentAreaFilled(false);
-        button.setBorderPainted(false);
+        button.setBorderPainted(true);
         button.setFocusPainted(false);
         button.setOpaque(false);
         button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        button.setBorder(Theme.padding(4, 0, 4, Theme.GAP));
+        button.setBorder(Theme.focusRing(Theme.padding(4, 0, 4, Theme.GAP)));
         button.addActionListener(event -> action.run());
         return button;
-    }
-
-    // ------------------------------------------------------------------
-    // The header
-    // ------------------------------------------------------------------
-
-    private JPanel buildHeader() {
-        JPanel header = new JPanel(new BorderLayout());
-        header.setBackground(Theme.CARD);
-        header.setPreferredSize(new Dimension(0, HEADER_HEIGHT));
-        header.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createMatteBorder(0, 0, 1, 0, Theme.BORDER),
-                Theme.padding(0, Theme.PAD_LARGE, 0, Theme.PAD_LARGE)));
-
-        JLabel title = new JLabel(pageTitle());
-        title.setFont(Theme.H3);
-        title.setForeground(Theme.TEXT);
-        header.add(title, BorderLayout.WEST);
-
-        JPanel right = new JPanel(new java.awt.FlowLayout(
-                java.awt.FlowLayout.RIGHT, Theme.GAP, 0));
-        right.setOpaque(false);
-        right.add(Theme.caption("Signed in as " + user.getRole().getLabel()));
-        right.add(Theme.badge(Theme.version(), Theme.PRIMARY));
-        header.add(right, BorderLayout.EAST);
-
-        // The label is kept so the title can change with the page.
-        this.headerTitle = title;
-        return header;
-    }
-
-    private JLabel headerTitle;
-
-    /**
-     * The starting header text.
-     *
-     * <p>Read from the dashboard page rather than repeated, so the header
-     * and the page cannot disagree about what the page is called. The pages
-     * are built before the header, so the lookup is safe here.
-     */
-    private String pageTitle() {
-        PagePanel dashboard = pages.get(DASHBOARD);
-        return dashboard == null ? Constants.APP_NAME : dashboard.title();
     }
 
     // ------------------------------------------------------------------
@@ -315,9 +297,6 @@ public final class MainFrame extends JFrame {
             boolean selected = button.pageKey.equals(key);
             button.setActive(selected);
             button.repaint();
-        }
-        if (headerTitle != null) {
-            headerTitle.setText(page.title());
         }
         page.reload();
     }
@@ -372,8 +351,7 @@ public final class MainFrame extends JFrame {
     // ------------------------------------------------------------------
 
     private void changePassword() {
-        ChangePasswordDialog dialog = new ChangePasswordDialog(this, services, user);
-        dialog.setVisible(true);
+        new ChangePasswordDialog(this, services, user).showDialog();
     }
 
     /**
@@ -418,11 +396,17 @@ public final class MainFrame extends JFrame {
     // ------------------------------------------------------------------
 
     /**
-     * A rail entry that paints its own selected and hovered states.
+     * A rail entry that paints its own selected, hovered and focused states.
      *
      * <p>Painted rather than assembled from borders and background colours
      * so the pill can be inset from the rail's edge, which is what stops
      * eleven buttons from reading as one solid blue block.
+     *
+     * <p>The selected state inverts: a pale pill carrying navy text. The
+     * obvious alternative - a mid-blue pill carrying white text - cannot work
+     * here, because a blue dark enough to give white text its 4.5:1 is too
+     * dark to be told apart from the navy rail behind it. The inverted pill
+     * clears both bars at over 12:1.
      */
     private static final class NavButton extends JButton {
 
@@ -467,18 +451,28 @@ public final class MainFrame extends JFrame {
             try {
                 g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
                         RenderingHints.VALUE_ANTIALIAS_ON);
+                g.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL,
+                        RenderingHints.VALUE_STROKE_PURE);
+
+                // The ring first, outside the pill, so it is measured against
+                // the rail rather than against the pill's own fill.
+                if (isFocusOwner()) {
+                    g.setColor(Theme.FOCUS_RING);
+                    g.setStroke(new java.awt.BasicStroke(Theme.FOCUS_THICKNESS));
+                    g.draw(new RoundRectangle2D.Float(1, 1, getWidth() - 2f,
+                            getHeight() - 2f, 12, 12));
+                }
+
                 if (active) {
                     g.setColor(Theme.NAVY_SELECTED);
-                    g.fill(new RoundRectangle2D.Float(0, 2, getWidth() - 6,
-                            getHeight() - 4, 10, 10));
-                    g.setColor(Color.WHITE);
+                    g.fill(pill());
+                    g.setColor(Theme.NAVY);
                 } else if (hovered) {
                     g.setColor(Theme.NAVY_HOVER);
-                    g.fill(new RoundRectangle2D.Float(0, 2, getWidth() - 6,
-                            getHeight() - 4, 10, 10));
+                    g.fill(pill());
                     g.setColor(Theme.TEXT_ON_NAVY);
                 } else {
-                    g.setColor(new Color(0xA8, 0xB6, 0xD0));
+                    g.setColor(Theme.TEXT_ON_NAVY_MUTED);
                 }
                 g.setFont(getFont());
                 g.drawString(getText(), Theme.PAD_LARGE + 4,
@@ -486,6 +480,12 @@ public final class MainFrame extends JFrame {
             } finally {
                 g.dispose();
             }
+        }
+
+        /** The selected or hovered pill, inset from the rail's edge. */
+        private RoundRectangle2D.Float pill() {
+            return new RoundRectangle2D.Float(4, 4, getWidth() - 10f,
+                    getHeight() - 8f, 10, 10);
         }
     }
 }

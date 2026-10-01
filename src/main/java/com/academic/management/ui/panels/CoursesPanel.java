@@ -67,7 +67,11 @@ public final class CoursesPanel extends PagePanel {
     private static final int[] WIDTHS = {100, 100, 240, 80, 130, 90, 180, 90};
 
     private static final int ID_COLUMN = 0;
+    private static final int NAME_COLUMN = 2;
     private static final int CREDITS_COLUMN = 3;
+    private static final int DEPARTMENT_COLUMN = 4;
+    private static final int SEMESTER_COLUMN = 5;
+    private static final int FACULTY_COLUMN = 6;
     private static final int ENROLLED_COLUMN = 7;
 
     private static final String ALL_DEPARTMENTS = "All departments";
@@ -76,10 +80,19 @@ public final class CoursesPanel extends PagePanel {
     private final transient ServiceRegistry services;
     private final transient DisplayTableModel model = new DisplayTableModel(HEADERS, WIDTHS);
     private final transient DataTable table = DataTable.over(model)
-            .numeric(CREDITS_COLUMN, ENROLLED_COLUMN);
+            .fit(NAME_COLUMN, DEPARTMENT_COLUMN, FACULTY_COLUMN)
+            .numeric(CREDITS_COLUMN, SEMESTER_COLUMN, ENROLLED_COLUMN);
 
     private final JTextField searchField = Theme.styleInput(new JTextField());
-    private final JComboBox<String> departmentFilter = new JComboBox<>();
+    private final JComboBox<String> departmentFilter = Theme.styleSelect(new JComboBox<>());
+
+    /**
+     * The centre of the page, holding either the table or the empty state.
+     *
+     * <p>Held as a field rather than built inside {@code buildBody} because
+     * {@link #showRows} has to swap its child on every render.
+     */
+    private final JPanel tableArea = new JPanel(new BorderLayout());
 
     private String searchTerm = "";
     private String department = "";
@@ -148,7 +161,6 @@ public final class CoursesPanel extends PagePanel {
             }
         });
 
-        departmentFilter.setFont(Theme.BODY);
         departmentFilter.setPreferredSize(new Dimension(180, 30));
         departmentFilter.addItem(ALL_DEPARTMENTS);
         departmentFilter.addActionListener(event -> {
@@ -157,20 +169,23 @@ public final class CoursesPanel extends PagePanel {
             reload();
         });
 
-        JPanel filters = row(Theme.caption("Search:"), searchField,
-                Theme.caption("Department:"), departmentFilter, glue());
+        JPanel filters = row(filterLabel("Search:", searchField),
+                filterLabel("Department:", departmentFilter), glue());
         filters.setBorder(Theme.padding(0, 0, Theme.GAP, 0));
+
+        tableArea.setOpaque(false);
+        tableArea.add(table.scroll(), BorderLayout.CENTER);
 
         JPanel body = new JPanel(new BorderLayout(0, Theme.GAP));
         body.setOpaque(false);
         body.add(filters, BorderLayout.NORTH);
-        body.add(table.scroll(), BorderLayout.CENTER);
+        body.add(tableArea, BorderLayout.CENTER);
         return body;
     }
 
     private void searchChanged() {
         searchTerm = searchField.getText().trim();
-        reload();
+        reloadWhenTypingSettles();
     }
 
     // ------------------------------------------------------------------
@@ -261,6 +276,10 @@ public final class CoursesPanel extends PagePanel {
             status.append(" matching '").append(searchTerm).append('\'');
         }
         setStatus(status.toString());
+        showRows(tableArea, table.scroll(), rows.size(),
+                rows.isEmpty() && searchTerm.isEmpty() && department.isEmpty()
+                        ? "No courses yet. Use Add course to create the first record."
+                        : "No course matches the current filters.");
     }
 
     /**

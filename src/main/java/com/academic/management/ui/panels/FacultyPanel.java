@@ -55,6 +55,9 @@ public final class FacultyPanel extends PagePanel {
     private static final int[] WIDTHS = {100, 170, 200, 130, 140, 80, 120, 110, 110, 110, 90};
 
     private static final int ID_COLUMN = 0;
+    private static final int NAME_COLUMN = 1;
+    private static final int EMAIL_COLUMN = 2;
+    private static final int DESIGNATION_COLUMN = 4;
     private static final int SERVICE_COLUMN = 10;
 
     private static final String ALL_DEPARTMENTS = "All departments";
@@ -62,11 +65,21 @@ public final class FacultyPanel extends PagePanel {
 
     private final transient ServiceRegistry services;
     private final transient DisplayTableModel model = new DisplayTableModel(HEADERS, WIDTHS);
-    private final transient DataTable table = DataTable.over(model).numeric(SERVICE_COLUMN);
+    private final transient DataTable table = DataTable.over(model)
+            .fit(NAME_COLUMN, EMAIL_COLUMN, DESIGNATION_COLUMN)
+            .numeric(SERVICE_COLUMN);
 
     private final JTextField searchField = Theme.styleInput(new JTextField());
-    private final JComboBox<String> departmentFilter = new JComboBox<>();
-    private final JComboBox<String> designationFilter = new JComboBox<>();
+    private final JComboBox<String> departmentFilter = Theme.styleSelect(new JComboBox<>());
+    private final JComboBox<String> designationFilter = Theme.styleSelect(new JComboBox<>());
+
+    /**
+     * The centre of the page, holding either the table or the empty state.
+     *
+     * <p>Held as a field rather than built inside {@code buildBody} because
+     * {@link #showRows} has to swap its child on every render.
+     */
+    private final JPanel tableArea = new JPanel(new BorderLayout());
 
     private String searchTerm = "";
     private String department = "";
@@ -140,21 +153,23 @@ public final class FacultyPanel extends PagePanel {
             designation = ALL_DESIGNATIONS.equals(value) ? "" : value;
         });
 
-        JPanel filters = row(Theme.caption("Search:"), searchField,
-                Theme.caption("Department:"), departmentFilter,
-                Theme.caption("Designation:"), designationFilter, glue());
+        JPanel filters = row(filterLabel("Search:", searchField),
+                filterLabel("Department:", departmentFilter),
+                filterLabel("Designation:", designationFilter), glue());
         filters.setBorder(Theme.padding(0, 0, Theme.GAP, 0));
+
+        tableArea.setOpaque(false);
+        tableArea.add(table.scroll(), BorderLayout.CENTER);
 
         JPanel body = new JPanel(new BorderLayout(0, Theme.GAP));
         body.setOpaque(false);
         body.add(filters, BorderLayout.NORTH);
-        body.add(table.scroll(), BorderLayout.CENTER);
+        body.add(tableArea, BorderLayout.CENTER);
         return body;
     }
 
     private void configureFilter(JComboBox<String> combo, String allLabel,
                                  java.util.function.Consumer<String> onChange) {
-        combo.setFont(Theme.BODY);
         combo.setPreferredSize(new Dimension(170, 30));
         combo.addItem(allLabel);
         combo.addActionListener(event -> {
@@ -165,7 +180,7 @@ public final class FacultyPanel extends PagePanel {
 
     private void searchChanged() {
         searchTerm = searchField.getText().trim();
-        reload();
+        reloadWhenTypingSettles();
     }
 
     // ------------------------------------------------------------------
@@ -241,6 +256,11 @@ public final class FacultyPanel extends PagePanel {
             status.append(" matching '").append(searchTerm).append('\'');
         }
         setStatus(status.toString());
+        showRows(tableArea, table.scroll(), rows.size(),
+                rows.isEmpty() && searchTerm.isEmpty() && department.isEmpty()
+                        && designation.isEmpty()
+                        ? "No faculty yet. Use Add faculty to create the first record."
+                        : "No faculty member matches the current filters.");
     }
 
     /**

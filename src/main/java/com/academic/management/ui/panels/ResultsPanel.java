@@ -62,21 +62,35 @@ public final class ResultsPanel extends PagePanel {
     private static final int[] WIDTHS = {100, 170, 100, 220, 90, 90, 80, 100, 70, 80, 90, 160};
 
     private static final int STUDENT_ID_COLUMN = 0;
+    private static final int STUDENT_COLUMN = 1;
     private static final int COURSE_ID_COLUMN = 2;
+    private static final int COURSE_COLUMN = 3;
     private static final int INTERNAL_COLUMN = 4;
     private static final int EXTERNAL_COLUMN = 5;
     private static final int TOTAL_COLUMN = 6;
+    private static final int PERCENTAGE_COLUMN = 7;
     private static final int POINTS_COLUMN = 9;
     private static final int VERDICT_COLUMN = 10;
+    private static final int REMARKS_COLUMN = 11;
 
     private final transient ServiceRegistry services;
     private final transient DisplayTableModel model = new DisplayTableModel(HEADERS, WIDTHS);
     private final transient DataTable table = DataTable.over(model)
-            .numeric(INTERNAL_COLUMN, EXTERNAL_COLUMN, TOTAL_COLUMN, POINTS_COLUMN)
+            .fit(STUDENT_COLUMN, COURSE_COLUMN, REMARKS_COLUMN)
+            .numeric(INTERNAL_COLUMN, EXTERNAL_COLUMN, TOTAL_COLUMN, PERCENTAGE_COLUMN,
+                    POINTS_COLUMN)
             .verdict(VERDICT_COLUMN);
 
     private final JTextField searchField = Theme.styleInput(new JTextField());
-    private final JComboBox<String> gradeFilter = new JComboBox<>();
+    private final JComboBox<String> gradeFilter = Theme.styleSelect(new JComboBox<>());
+
+    /**
+     * The centre of the page, holding either the table or the empty state.
+     *
+     * <p>Held as a field rather than built inside {@code buildBody} because
+     * {@link #showRows} has to swap its child on every render.
+     */
+    private final JPanel tableArea = new JPanel(new BorderLayout());
 
     private String searchTerm = "";
     private String grade = "";
@@ -135,7 +149,6 @@ public final class ResultsPanel extends PagePanel {
             }
         });
 
-        gradeFilter.setFont(Theme.BODY);
         gradeFilter.setPreferredSize(new Dimension(150, 30));
         gradeFilter.addItem("All grades");
         for (Grade value : Grade.orderedByThreshold()) {
@@ -147,22 +160,25 @@ public final class ResultsPanel extends PagePanel {
             reload();
         });
 
-        JPanel filters = row(Theme.caption("Search:"), searchField,
-                Theme.caption("Grade:"), gradeFilter,
+        JPanel filters = row(filterLabel("Search:", searchField),
+                filterLabel("Grade:", gradeFilter),
                 Theme.caption("Pass mark: " + UiSupport.number(Constants.PASS_PERCENTAGE) + "%"),
                 glue());
         filters.setBorder(Theme.padding(0, 0, Theme.GAP, 0));
 
+        tableArea.setOpaque(false);
+        tableArea.add(table.scroll(), BorderLayout.CENTER);
+
         JPanel body = new JPanel(new BorderLayout(0, Theme.GAP));
         body.setOpaque(false);
         body.add(filters, BorderLayout.NORTH);
-        body.add(table.scroll(), BorderLayout.CENTER);
+        body.add(tableArea, BorderLayout.CENTER);
         return body;
     }
 
     private void searchChanged() {
         searchTerm = searchField.getText().trim();
-        reload();
+        reloadWhenTypingSettles();
     }
 
     // ------------------------------------------------------------------
@@ -235,6 +251,11 @@ public final class ResultsPanel extends PagePanel {
             status.append(", matching '").append(searchTerm).append('\'');
         }
         setStatus(status.toString());
+        showRows(tableArea, table.scroll(), rows.size(),
+                rows.isEmpty() && searchTerm.isEmpty() && grade.isEmpty()
+                        ? "No results published yet. Use Publish result to grade the first "
+                          + "enrolment."
+                        : "No result matches the current filters.");
     }
 
     // ------------------------------------------------------------------
@@ -533,7 +554,7 @@ public final class ResultsPanel extends PagePanel {
                     "Select a result in the table, then choose Delete.");
             return;
         }
-        if (!UiErrors.confirm(this, "Delete result",
+        if (!UiErrors.confirmDetailed(this, "Delete result",
                 "Delete the result for " + studentId + " in " + courseId
                         + "?\n\nThe student stays enrolled and the attendance for the course"
                         + " is kept.")) {

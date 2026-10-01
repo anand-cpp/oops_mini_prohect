@@ -58,9 +58,14 @@ public final class ProfilesPanel extends PagePanel {
 
     private static final int[] WIDTHS = {200, 90, 60, 70, 150, 100, 60, 80, 90, 80, 60, 70, 90};
 
+    private static final int COURSE_COLUMN = 0;
+    private static final int SEM_COLUMN = 2;
     private static final int CREDITS_COLUMN = 3;
+    private static final int FACULTY_COLUMN = 4;
     private static final int HELD_COLUMN = 6;
     private static final int ATTENDED_COLUMN = 7;
+    private static final int ATTENDANCE_COLUMN = 8;
+    private static final int RESULT_COLUMN = 9;
     private static final int POINTS_COLUMN = 11;
     private static final int VERDICT_COLUMN = 12;
 
@@ -69,12 +74,22 @@ public final class ProfilesPanel extends PagePanel {
     private final transient ServiceRegistry services;
     private final transient DisplayTableModel model = new DisplayTableModel(HEADERS, WIDTHS);
     private final transient DataTable table = DataTable.over(model)
-            .numeric(CREDITS_COLUMN, HELD_COLUMN, ATTENDED_COLUMN, POINTS_COLUMN)
+            .fit(COURSE_COLUMN, FACULTY_COLUMN)
+            .numeric(SEM_COLUMN, CREDITS_COLUMN, HELD_COLUMN, ATTENDED_COLUMN,
+                    ATTENDANCE_COLUMN, RESULT_COLUMN, POINTS_COLUMN)
             .verdict(VERDICT_COLUMN);
 
-    private final JComboBox<String> studentPicker = new JComboBox<>();
+    private final JComboBox<String> studentPicker = Theme.styleSelect(new JComboBox<>());
     private final JPanel cards = new JPanel(new GridLayout(1, 4, Theme.GAP, 0));
     private final JLabel standing = Theme.caption(" ");
+
+    /**
+     * The centre of the page, holding either the table or the empty state.
+     *
+     * <p>Held as a field rather than built inside {@code buildBody} because
+     * {@link #showRows} has to swap its child on every render.
+     */
+    private final JPanel tableArea = new JPanel(new BorderLayout());
 
     private String studentId = "";
 
@@ -113,7 +128,6 @@ public final class ProfilesPanel extends PagePanel {
     // ------------------------------------------------------------------
 
     private JPanel buildBody() {
-        studentPicker.setFont(Theme.BODY);
         studentPicker.setPreferredSize(new Dimension(340, 30));
         studentPicker.addActionListener(event -> {
             studentId = idOfOption(studentPicker.getSelectedItem());
@@ -131,16 +145,19 @@ public final class ProfilesPanel extends PagePanel {
 
         JPanel top = new JPanel(new BorderLayout(0, Theme.GAP));
         top.setOpaque(false);
-        top.add(row(Theme.caption("Student:"), studentPicker,
+        top.add(row(filterLabel("Student:", studentPicker),
                 Theme.caption("Choose a student, then press Open profile.")),
                 BorderLayout.NORTH);
         top.add(cards, BorderLayout.CENTER);
         top.add(banner, BorderLayout.SOUTH);
 
+        tableArea.setOpaque(false);
+        tableArea.add(table.scroll(), BorderLayout.CENTER);
+
         JPanel body = new JPanel(new BorderLayout(0, Theme.GAP));
         body.setOpaque(false);
         body.add(top, BorderLayout.NORTH);
-        body.add(table.scroll(), BorderLayout.CENTER);
+        body.add(tableArea, BorderLayout.CENTER);
         return body;
     }
 
@@ -164,7 +181,6 @@ public final class ProfilesPanel extends PagePanel {
         card.add(value, BorderLayout.CENTER);
         JPanel footer = new JPanel(new BorderLayout());
         footer.setOpaque(false);
-        footer.add(Theme.caption(" "), BorderLayout.WEST);
         footer.add(Theme.caption(note), BorderLayout.EAST);
         card.add(footer, BorderLayout.SOUTH);
         return card;
@@ -223,11 +239,16 @@ public final class ProfilesPanel extends PagePanel {
     protected void render(List<String[]> rows) {
         if (studentId.isEmpty()) {
             setStatus("Choose a student from the list to see their profile.");
+            showRows(tableArea, table.scroll(), 0,
+                    "No profile open. Choose a student, then press Open profile.");
             return;
         }
         setStatus(profile.getStudent().getName() + " — "
                 + UiSupport.count(rows.size(), "course", "courses")
                 + ", generated " + UiSupport.date(profile.getGeneratedAt()));
+        showRows(tableArea, table.scroll(), rows.size(),
+                "This student is not enrolled on any course yet, so there is nothing "
+                        + "to summarise. Enrol them on the Enrolments page first.");
     }
 
     /**

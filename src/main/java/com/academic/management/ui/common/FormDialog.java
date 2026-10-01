@@ -6,18 +6,21 @@ import com.academic.management.util.AppLogger;
 import com.academic.management.util.Constants;
 import com.academic.management.util.Validator;
 
+import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
 import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.JPasswordField;
 import javax.swing.JTextField;
+import javax.swing.KeyStroke;
 import javax.swing.SwingUtilities;
 import java.awt.BorderLayout;
-import java.awt.Color;
 import java.awt.Dialog;
 import java.awt.FlowLayout;
 import java.awt.Window;
+import java.awt.event.KeyEvent;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -65,9 +68,6 @@ public final class FormDialog extends javax.swing.JDialog {
     private static final long serialVersionUID = 1L;
 
     private static final Logger LOGGER = AppLogger.getLogger(FormDialog.class);
-
-    /** The background of the inline validation banner. */
-    private static final Color BANNER_BACKGROUND = new Color(0xFD, 0xEC, 0xEA);
 
     /** Fields in the order they were declared, which is the order shown. */
     private final transient Map<JComponent, Field> fields = new LinkedHashMap<>();
@@ -118,7 +118,23 @@ public final class FormDialog extends javax.swing.JDialog {
         getRootPane().setDefaultButton(saveButton);
         saveButton.addActionListener(event -> attemptSave(onSave));
         cancelButton.addActionListener(event -> dispose());
+        // Escape closes without saving, matching the Cancel button and the
+        // message dialogs in UiErrors: a form is never dismissed by a key the
+        // user pressed while looking at something else.
+        getRootPane().getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW)
+                .put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), CANCEL);
+        getRootPane().getActionMap().put(CANCEL, new AbstractAction() {
+            private static final long serialVersionUID = 1L;
+
+            @Override
+            public void actionPerformed(java.awt.event.ActionEvent event) {
+                dispose();
+            }
+        });
     }
+
+    /** Action name for the escape binding, so it cannot clash with a button. */
+    private static final String CANCEL = "form-cancel";
 
     // ------------------------------------------------------------------
     // Field declaration
@@ -146,6 +162,34 @@ public final class FormDialog extends javax.swing.JDialog {
     }
 
     /**
+     * Adds a password field.
+     *
+     * <p>Declared here rather than built by hand in the one dialog that needs
+     * it, because a hand-built field is a field that misses something: the
+     * live re-validation on every keystroke, the error border, the focus
+     * ring, and - the part that actually matters - a value read on the event
+     * thread before the worker thread starts.
+     *
+     * <p>The declared value is the typed text, so a save action reads it the
+     * same way it reads any other field. The service is what judges a
+     * password; this form only checks that something was typed.
+     *
+     * @param label   the label, which is also the key in the values map
+     * @param columns the field width in characters
+     * @param rule    the live validation rule
+     */
+    public JPasswordField addPasswordField(String label, int columns, Rule rule) {
+        JPasswordField field = Theme.styleInput(new JPasswordField(columns));
+        declare(label, field, rule, false);
+        return field;
+    }
+
+    /** Adds a password field with the default width. */
+    public JPasswordField addPasswordField(String label, Rule rule) {
+        return addPasswordField(label, 24, rule);
+    }
+
+    /**
      * Adds an optional text field. The label reads "(optional)" on screen
      * but is still the plain label as a key, so the save action does not
      * have to know which fields were optional.
@@ -160,7 +204,7 @@ public final class FormDialog extends javax.swing.JDialog {
     public JTextField addLockedField(String label, String value) {
         JTextField field = Theme.styleInput(new JTextField(value, 20));
         field.setEditable(false);
-        field.setBackground(new Color(0xF1, 0xF3, 0xF6));
+        field.setBackground(Theme.LOCKED_BACKGROUND);
         field.setForeground(Theme.TEXT_MUTED);
         declare(label, field, null, false);
         return field;
@@ -201,12 +245,7 @@ public final class FormDialog extends javax.swing.JDialog {
      * rather than a null foreign key.
      */
     public JComboBox<String> addComboField(String label, List<String> options, Rule rule) {
-        JComboBox<String> combo = new JComboBox<>(options.toArray(new String[0]));
-        combo.setFont(Theme.BODY);
-        combo.setBackground(Color.WHITE);
-        combo.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(Theme.BORDER_STRONG),
-                BorderFactory.createEmptyBorder(5, 6, 5, 6)));
+        JComboBox<String> combo = Theme.styleSelect(new JComboBox<>(options.toArray(new String[0])));
         declare(label, combo, rule, false);
         return combo;
     }
@@ -379,9 +418,9 @@ public final class FormDialog extends javax.swing.JDialog {
 
     private void markValid(JComponent component) {
         if (component instanceof JTextField textField && textField.isEditable()) {
-            textField.setBorder(BorderFactory.createCompoundBorder(
-                    BorderFactory.createLineBorder(Theme.BORDER_STRONG),
-                    BorderFactory.createEmptyBorder(6, 8, 6, 8)));
+            // Back through the theme rather than rebuilt here, so a field that
+            // recovers from an error keeps the focus ring it started with.
+            textField.setBorder(Theme.inputBorder());
         }
     }
 
@@ -397,7 +436,7 @@ public final class FormDialog extends javax.swing.JDialog {
         label.setForeground(Theme.DANGER);
 
         JPanel inner = new JPanel(new BorderLayout());
-        inner.setBackground(BANNER_BACKGROUND);
+        inner.setBackground(Theme.ERROR_BACKGROUND);
         inner.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createMatteBorder(0, 3, 0, 0, Theme.DANGER),
                 BorderFactory.createEmptyBorder(8, 10, 8, 10)));
@@ -526,6 +565,12 @@ public final class FormDialog extends javax.swing.JDialog {
     }
 
     private static String readValue(JComponent component) {
+        // Before the JTextField branch: a JPasswordField is one, and its
+        // getText is the deprecated way round. Reading it on the event thread
+        // is what this whole class is arranged around.
+        if (component instanceof JPasswordField passwordField) {
+            return new String(passwordField.getPassword()).trim();
+        }
         if (component instanceof JTextField textField) {
             return textField.getText().trim();
         }

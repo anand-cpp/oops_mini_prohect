@@ -9,7 +9,9 @@ import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.JScrollPane;
 import javax.swing.SwingUtilities;
+import javax.swing.Timer;
 import java.awt.BorderLayout;
 import java.awt.Component;
 import java.awt.Dimension;
@@ -43,6 +45,14 @@ public abstract class PagePanel extends JPanel {
 
     private static final long serialVersionUID = 1L;
 
+    /**
+     * How long typing has to pause before a filter runs, in milliseconds.
+     *
+     * <p>The same figure {@code SearchPanel} uses, so every filter in the
+     * application settles at the same speed.
+     */
+    private static final int TYPING_PAUSE_MS = 300;
+
     private final JLabel titleLabel;
     private final JLabel subtitleLabel;
     private final JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, Theme.GAP, 0));
@@ -50,6 +60,9 @@ public abstract class PagePanel extends JPanel {
     private final JPanel content = new JPanel(new BorderLayout());
     private final JLabel statusLabel = new JLabel(" ");
     private final transient List<JButton> toolbarButtons = new ArrayList<>();
+
+    /** Restarted on every keystroke, so only the last one survives. */
+    private final transient Timer typingPause = new Timer(TYPING_PAUSE_MS, event -> reload());
 
     /** True while a load is running, so a second one is not started. */
     private transient boolean loading;
@@ -82,6 +95,7 @@ public abstract class PagePanel extends JPanel {
         heading.add(titleLabel, BorderLayout.NORTH);
         heading.add(subtitleLabel, BorderLayout.SOUTH);
 
+        typingPause.setRepeats(false);
         toolbar.setOpaque(false);
         actionBar.setOpaque(false);
 
@@ -191,6 +205,11 @@ public abstract class PagePanel extends JPanel {
      * post-change state in every case where the second would matter.
      */
     public final void reload() {
+        // A reload that was asked for directly supersedes one waiting on the
+        // typing pause: the newer request is the one the user meant, and
+        // letting the paused one fire afterwards would query the same data
+        // twice and overwrite the status line.
+        typingPause.stop();
         if (loading) {
             return;
         }
@@ -270,14 +289,77 @@ public abstract class PagePanel extends JPanel {
     protected static JPanel emptyState(String message) {
         JPanel panel = new JPanel(new java.awt.GridBagLayout());
         panel.setBackground(Theme.CARD);
+        // The strong border, not the hairline one: this is the edge of a card,
+        // and the whole point of the placeholder is to read as a deliberate
+        // surface rather than as a table that failed to paint.
         panel.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(Theme.BORDER),
+                BorderFactory.createLineBorder(Theme.BORDER_STRONG),
                 Theme.padding(Theme.PAD_LARGE * 2)));
         JLabel label = new JLabel(message);
         label.setFont(Theme.BODY);
         label.setForeground(Theme.TEXT_MUTED);
         panel.add(label);
         return panel;
+    }
+
+    /**
+     * Shows a table, or an empty state when there is nothing to put in it.
+     *
+     * <p>The area is reused rather than rebuilt, so the table keeps its
+     * scroll position, its selection and its fitted column widths across a
+     * filter that happened to return the same rows. Only the single child
+     * changes.
+     *
+     * @param area          the panel the table lives in, added to the page in
+     *                      its centre
+     * @param table         the table's scroll pane, built once by
+     *                      {@link DataTable#scroll()}
+     * @param rowCount      how many rows the last load produced
+     * @param emptyMessage  what to say when there are none
+     */
+    protected static void showRows(JPanel area, JScrollPane table, int rowCount,
+                                   String emptyMessage) {
+        boolean hasRows = rowCount > 0;
+        JComponent wanted = hasRows ? table : emptyState(emptyMessage);
+        for (Component child : area.getComponents()) {
+            if (child == wanted) {
+                return;
+            }
+        }
+        area.removeAll();
+        area.add(wanted, BorderLayout.CENTER);
+        area.revalidate();
+        area.repaint();
+    }
+
+    /**
+     * A caption tied to the control it labels.
+     *
+     * <p>{@link JLabel#setLabelFor} is what makes the pairing real rather
+     * than visual: a screen reader announces the caption when focus reaches
+     * the field, and picking the caption moves focus to the control. Without
+     * it a row of filter controls is a run of unrelated words and boxes.
+     */
+    protected static JLabel filterLabel(String text, JComponent field) {
+        JLabel label = Theme.caption(text);
+        label.setLabelFor(field);
+        field.getAccessibleContext().setAccessibleName(text);
+        return label;
+    }
+
+    /**
+     * Restarts the pause before {@link #reload()}, so a burst of typing
+     * collapses into one query instead of one per keystroke.
+     *
+     * <p>Each keystroke on a filter is a database round trip. Reloading on
+     * every one of them would run and discard a query per character and make
+     * the table flicker on the way to a result the user already knows how to
+     * see. A short pause afterwards costs nothing and removes the churn; the
+     * dropdown filters, which are single clicks rather than typing, call
+     * {@code reload()} directly.
+     */
+    protected final void reloadWhenTypingSettles() {
+        typingPause.restart();
     }
 
     /** A vertical run of components with a consistent gap. */

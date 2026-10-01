@@ -64,16 +64,29 @@ public final class StudentsPanel extends PagePanel {
 
     /** Columns used when reading a selected row. */
     private static final int ID_COLUMN = 0;
+    private static final int NAME_COLUMN = 1;
+    private static final int EMAIL_COLUMN = 2;
+    private static final int DEPARTMENT_COLUMN = 3;
     private static final int SEMESTER_COLUMN = 4;
 
     private static final String ALL_DEPARTMENTS = "All departments";
 
     private final transient ServiceRegistry services;
     private final transient DisplayTableModel model = new DisplayTableModel(HEADERS, WIDTHS);
-    private final transient DataTable table = DataTable.over(model).numeric(SEMESTER_COLUMN);
+    private final transient DataTable table = DataTable.over(model)
+            .fit(NAME_COLUMN, EMAIL_COLUMN, DEPARTMENT_COLUMN)
+            .numeric(SEMESTER_COLUMN);
 
     private final JTextField searchField = Theme.styleInput(new JTextField());
-    private final JComboBox<String> departmentFilter = new JComboBox<>();
+    private final JComboBox<String> departmentFilter = Theme.styleSelect(new JComboBox<>());
+
+    /**
+     * The centre of the page, holding either the table or the empty state.
+     *
+     * <p>Held as a field rather than built inside {@code buildBody} because
+     * {@link #showRows} has to swap its child on every render.
+     */
+    private final JPanel tableArea = new JPanel(new BorderLayout());
 
     private String searchTerm = "";
     private String department = "";
@@ -135,7 +148,6 @@ public final class StudentsPanel extends PagePanel {
             }
         });
 
-        departmentFilter.setFont(Theme.BODY);
         departmentFilter.setPreferredSize(new Dimension(200, 30));
         departmentFilter.addItem(ALL_DEPARTMENTS);
         departmentFilter.addActionListener(event -> {
@@ -144,20 +156,23 @@ public final class StudentsPanel extends PagePanel {
             reload();
         });
 
-        JPanel filters = row(Theme.caption("Search:"), searchField,
-                Theme.caption("Department:"), departmentFilter, glue());
+        JPanel filters = row(filterLabel("Search:", searchField),
+                filterLabel("Department:", departmentFilter), glue());
         filters.setBorder(Theme.padding(0, 0, Theme.GAP, 0));
+
+        tableArea.setOpaque(false);
+        tableArea.add(table.scroll(), BorderLayout.CENTER);
 
         JPanel body = new JPanel(new BorderLayout(0, Theme.GAP));
         body.setOpaque(false);
         body.add(filters, BorderLayout.NORTH);
-        body.add(table.scroll(), BorderLayout.CENTER);
+        body.add(tableArea, BorderLayout.CENTER);
         return body;
     }
 
     private void searchChanged() {
         searchTerm = searchField.getText().trim();
-        reload();
+        reloadWhenTypingSettles();
     }
 
     // ------------------------------------------------------------------
@@ -239,6 +254,10 @@ public final class StudentsPanel extends PagePanel {
             status.append(" in ").append(department);
         }
         setStatus(status.toString());
+        showRows(tableArea, table.scroll(), rows.size(),
+                rows.isEmpty() && searchTerm.isEmpty() && department.isEmpty()
+                        ? "No students yet. Use Add student to create the first record."
+                        : "No student matches the current filters.");
     }
 
     /**
